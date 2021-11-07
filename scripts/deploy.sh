@@ -26,9 +26,10 @@ AZURE_CORE_ONLY_SHOW_ERRORS="True"
 CONTAINERAPPS_ENVIRONMENT_NAME="env-$DEPLOYMENT_NAME" # Name of the ContainerApp Environment
 REDIS_NAME="rds-env-$DEPLOYMENT_NAME"
 RESOURCE_GROUP=$DEPLOYMENT_NAME # here enter the resources group
-CONTAINERAPPS_LOCATION="Central US EUAP"
+CONTAINERAPPS_LOCATION="Canada Central" # "Central US EUAP"
 AI_INSTRUMENTATION_KEY=""
 
+echo "starting to deploy the containerapp"
 az containerapp env list -g $RESOURCE_GROUP --query "[?contains(name, '$CONTAINERAPPS_ENVIRONMENT_NAME')].id" -o tsv
 
 CONTAINER_APP_ENV_ID=$(az containerapp env list -g $RESOURCE_GROUP --query "[?contains(name, '$CONTAINERAPPS_ENVIRONMENT_NAME')].id" -o tsv)

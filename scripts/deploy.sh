@@ -154,28 +154,48 @@ else
 
     echo "revision fqdn is $WORKER_BACKEND_REVISION_FQDN"
 
-    curl $WORKER_BACKEND_REVISION_FQDN/ping
-   
+    sleep 10
+    
     echo "here we can make a decision to abort and deactivate the new release"
+
+    RES_BACKEND=$(curl --write-out "%{http_code}\n" -f -s $WORKER_BACKEND_REVISION_FQDN/ping --output backend.txt )
+    echo $RES_BACKEND 
+
+    if [ $RES_BACKEND = "301" ]; then
        
-    echo "increasing traffic split to 50/50"
-    az containerapp update --name $BACKEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_BACKEND_RELEASE_NAME=50,latest=50
+        echo "backend is up and running and responded with $RES_BACKEND"
+        # echo "increasing traffic split to 50/50"
+        # az containerapp update --name $BACKEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_BACKEND_RELEASE_NAME=50,latest=50
 
-    sleep 10
-    
-    curl $WORKER_BACKEND_REVISION_FQDN/ping
+        # sleep 10
+        
+        # curl $WORKER_BACKEND_REVISION_FQDN/ping
 
-    sleep 10
-    
-    echo "increasing traffic split to 0/100"
-    az containerapp update --name $BACKEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_BACKEND_RELEASE_NAME=0,latest=100
-    sleep 5
+        # sleep 10
+        
+        echo "increasing traffic split to 0/100"
+        az containerapp update --name $BACKEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_BACKEND_RELEASE_NAME=0,latest=100
+        sleep 5
 
-    az containerapp revision deactivate --app $BACKEND_APP_ID -g $RESOURCE_GROUP --name $OLD_BACKEND_RELEASE_NAME 
+        az containerapp revision deactivate --app $BACKEND_APP_ID -g $RESOURCE_GROUP --name $OLD_BACKEND_RELEASE_NAME 
 
-    az containerapp revision list -g $RESOURCE_GROUP -n $BACKEND_APP_ID --query "[].{Revision:name,Replicas:replicas,Active:active,Created:createdTime,FQDN:fqdn}" -o table
+        az containerapp revision list -g $RESOURCE_GROUP -n $BACKEND_APP_ID --query "[].{Revision:name,Replicas:replicas,Active:active,Created:createdTime,FQDN:fqdn}" -o table
 
-    WORKER_BACKEND_FQDN=$WORKER_BACKEND_REVISION_FQDN
+        WORKER_BACKEND_FQDN=$WORKER_BACKEND_REVISION_FQDN
+
+    else
+        echo "backend responded with $RES_BACKEND - deployment failed"
+        
+        echo "bringing back the old revision $OLD_BACKEND_RELEASE_NAME"
+        az containerapp update --name $BACKEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_BACKEND_RELEASE_NAME=100,latest=0
+        
+        sleep 5
+
+        echo "deleting latest backend revision $NEW_BACKEND_RELEASE_NAME"
+        az containerapp revision deactivate --app $BACKEND_APP_ID -g $RESOURCE_GROUP --name $NEW_BACKEND_RELEASE_NAME 
+
+        exit
+    fi
 
 fi
 
@@ -259,29 +279,56 @@ else
 
     echo "revision fqdn is $WORKER_FRONTEND_REVISION_FQDN"
 
-    curl $WORKER_FRONTEND_REVISION_FQDN/ping
-
     echo "here we can make a decision to abort and deactivate the new release"
 
-    echo "increasing traffic split to 50/50"
-    az containerapp update --name $FRONTEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_FRONTEND_RELEASE_NAME=50,latest=50
-
     sleep 10
+
+    RES_FRONTEND=$(curl --write-out "%{http_code}\n" -f -s $WORKER_FRONTEND_REVISION_FQDN/ping --output frontend.txt )
+    echo $RES_FRONTEND
+
+    if [ $RES_FRONTEND = "301" ]; then
+
+        echo "frontend is up and running and responded with $RES_FRONTEND"
+        # echo "increasing traffic split to 50/50"
+        # az containerapp update --name $FRONTEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_FRONTEND_RELEASE_NAME=50,latest=50
+
+        # sleep 10
+        
+        echo "increasing traffic split to 0/100"
+        az containerapp update --name $FRONTEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_FRONTEND_RELEASE_NAME=0,latest=100
+        sleep 5
+
+        az containerapp revision deactivate --app $FRONTEND_APP_ID -g $RESOURCE_GROUP --name $OLD_FRONTEND_RELEASE_NAME 
+
+        az containerapp revision list -g $RESOURCE_GROUP -n $FRONTEND_APP_ID --query "[].{Revision:name,Replicas:replicas,Active:active,Created:createdTime,FQDN:fqdn}" -o table
+
+        WORKER_FRONTEND_FQDN=$(az containerapp show --resource-group $RESOURCE_GROUP --name $FRONTEND_APP_ID --query "configuration.ingress.fqdn" -o tsv)
+
+    else
+        echo "frontend responded with $RES_FRONTEND - deployment failed"
+
+        echo "activating previous backend revison $OLD_BACKEND_RELEASE_NAME again"
+        az containerapp revision activate --app $BACKEND_APP_ID -g $RESOURCE_GROUP --name $OLD_BACKEND_RELEASE_NAME 
+        
+        sleep 5
+
+        az containerapp update --name $BACKEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_BACKEND_RELEASE_NAME=100,latest=0
+
+        sleep 5
+
+        echo "deleting latest backend revision $NEW_BACKEND_RELEASE_NAME"
+        az containerapp revision deactivate --app $BACKEND_APP_ID -g $RESOURCE_GROUP --name $NEW_BACKEND_RELEASE_NAME 
+
+        echo "bringing back the original frontend release $OLD_FRONTEND_RELEASE_NAME"
+        az containerapp update --name $BACKEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_FRONTEND_RELEASE_NAME=100,latest=0
+
+        sleep 5
+
+        echo "deleting latest frontend revision $NEW_FRONTEND_RELEASE_NAME again"
+        az containerapp revision deactivate --app $FRONTEND_APP_ID -g $RESOURCE_GROUP --name $NEW_FRONTEND_RELEASE_NAME 
+        exit
+    fi
     
-    curl $WORKER_FRONTEND_REVISION_FQDN/ping
-
-    sleep 10
-    
-    echo "increasing traffic split to 0/100"
-    az containerapp update --name $FRONTEND_APP_ID --resource-group $RESOURCE_GROUP --traffic-weight $OLD_FRONTEND_RELEASE_NAME=0,latest=100
-    sleep 5
-
-    az containerapp revision deactivate --app $FRONTEND_APP_ID -g $RESOURCE_GROUP --name $OLD_FRONTEND_RELEASE_NAME 
-
-    az containerapp revision list -g $RESOURCE_GROUP -n $FRONTEND_APP_ID --query "[].{Revision:name,Replicas:replicas,Active:active,Created:createdTime,FQDN:fqdn}" -o table
-
-    WORKER_FRONTEND_FQDN=$(az containerapp show --resource-group $RESOURCE_GROUP --name $FRONTEND_APP_ID --query "configuration.ingress.fqdn" -o tsv)
-
 fi
 
 echo "frontend running on $WORKER_FRONTEND_FQDN"
